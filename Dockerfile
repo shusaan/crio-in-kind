@@ -25,7 +25,7 @@ RUN git clone https://github.com/cri-o/cri-o.git . && \
     git checkout ${CRIO_VERSION}
 
 # Build CRI-O
-RUN make
+RUN make && ls -la bin/
 
 # Runtime stage
 FROM ubuntu:22.04
@@ -40,15 +40,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy CRI-O binaries from builder
-COPY --from=builder /go/src/github.com/cri-o/cri-o/bin/crio /usr/local/bin/
-COPY --from=builder /go/src/github.com/cri-o/cri-o/bin/crio-status /usr/local/bin/
+COPY --from=builder /go/src/github.com/cri-o/cri-o/bin/ /usr/local/bin/
 
 # Create necessary directories
 RUN mkdir -p /etc/crio /var/lib/containers/storage /var/run/crio
 
-# Copy default configuration
-COPY --from=builder /go/src/github.com/cri-o/cri-o/crio.conf /etc/crio/
-COPY --from=builder /go/src/github.com/cri-o/cri-o/crictl.yaml /etc/
+# Create a basic CRI-O configuration
+RUN echo '[crio]' > /etc/crio/crio.conf && \
+    echo 'storage_driver = "overlay"' >> /etc/crio/crio.conf && \
+    echo 'storage_option = ["overlay.mount_program=/usr/bin/fuse-overlayfs"]' >> /etc/crio/crio.conf
 
 # Expose CRI-O socket
 VOLUME ["/var/run/crio"]
