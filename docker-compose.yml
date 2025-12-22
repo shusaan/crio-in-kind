@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  crio:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: crio-in-kind:latest
+    container_name: crio-container
+    privileged: true
+    volumes:
+      - /var/run/crio:/var/run/crio
+      - /var/lib/containers:/var/lib/containers
+      - /etc/crio:/etc/crio
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    
+  # Optional: Add a test service
+  crio-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: crio-in-kind:test
+    container_name: crio-test
+    command: ["--version"]
+    profiles:
+      - test
