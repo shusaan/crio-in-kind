@@ -1,8 +1,11 @@
 # Multi-stage build for CRI-O
-FROM golang:1.21-bullseye AS builder
+FROM golang:1.23-bullseye AS builder
+
+# CRI-O version to build
+ARG CRIO_VERSION=v1.30.0
 
 # Install dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     git \
     pkg-config \
@@ -17,9 +20,9 @@ RUN apt-get update && apt-get install -y \
 # Set working directory
 WORKDIR /go/src/github.com/cri-o/cri-o
 
-# Clone CRI-O repository
+# Clone CRI-O repository and checkout specified version
 RUN git clone https://github.com/cri-o/cri-o.git . && \
-    git checkout main
+    git checkout ${CRIO_VERSION}
 
 # Build CRI-O
 RUN make
@@ -28,7 +31,7 @@ RUN make
 FROM ubuntu:22.04
 
 # Install runtime dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     iptables \
     runc \
