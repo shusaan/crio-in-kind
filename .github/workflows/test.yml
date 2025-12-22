@@ -25,6 +25,8 @@ jobs:
         tags: crio-test:latest
         cache-from: type=gha
         cache-to: type=gha,mode=max
+        build-args: |
+          CRIO_VERSION=v1.30.0
 
     - name: Test image
       run: |

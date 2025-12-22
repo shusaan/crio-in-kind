@@ -5,6 +5,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        CRIO_VERSION: v1.30.0
     image: crio-in-kind:latest
     container_name: crio-container
     privileged: true
@@ -21,6 +23,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        CRIO_VERSION: v1.30.0
     image: crio-in-kind:test
     container_name: crio-test
     command: ["--version"]
