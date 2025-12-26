@@ -4,7 +4,7 @@ FROM golang:1.23-bullseye AS builder
 # CRI-O version to build
 ARG CRIO_VERSION=v1.30.0
 
-# Install dependencies
+# Install dependencies in a single layer
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     git \
@@ -20,23 +20,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Set working directory
 WORKDIR /go/src/github.com/cri-o/cri-o
 
-# Clone CRI-O repository and checkout specified version
-RUN git clone https://github.com/cri-o/cri-o.git . && \
-    git checkout ${CRIO_VERSION}
+# Clone and build in separate steps for better caching
+RUN git clone --depth 1 --branch ${CRIO_VERSION} https://github.com/cri-o/cri-o.git .
 
-# Build CRI-O
-RUN make && ls -la bin/
+# Build CRI-O with optimizations
+RUN make BUILDTAGS="containers_image_ostree_stub containers_image_openpgp" && \
+    ls -la bin/
 
-# Runtime stage
-FROM ubuntu:22.04
+# Runtime stage - use same base as builder for compatibility
+FROM debian:bullseye-slim
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     iptables \
     runc \
-    conmon \
-    crun \
     libdevmapper1.02.1 \
     libgpgme11 \
     libassuan0 \
