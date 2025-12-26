@@ -37,10 +37,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     runc \
     conmon \
     crun \
+    libdevmapper1.02.1 \
+    libgpgme11 \
+    libassuan0 \
+    libseccomp2 \
+    libsystemd0 \
+    libbtrfs0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy CRI-O binaries from builder
 COPY --from=builder /go/src/github.com/cri-o/cri-o/bin/ /usr/local/bin/
+
+# Debug: Check what libraries crio needs
+RUN ldd /usr/local/bin/crio || true
 
 # Create necessary directories
 RUN mkdir -p /etc/crio /var/lib/containers/storage /var/run/crio
