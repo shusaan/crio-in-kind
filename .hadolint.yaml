@@ -1,0 +1,10 @@
+ignored:
+  - DL3008  # Pin versions in apt get install
+  - DL3015  # Avoid additional packages by specifying --no-install-recommends
+
+# We ignore DL3008 because:
+# 1. Exact version pinning can cause build failures across different architectures
+# 2. Using specific base image tags provides sufficient version control
+# 3. The --no-install-recommends flag addresses the main security concern
+
+# We ignore DL3015 because we already use --no-install-recommends

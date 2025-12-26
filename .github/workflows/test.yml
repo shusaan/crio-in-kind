@@ -1,0 +1,48 @@
+name: Test CRI-O Build
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build Docker image (test)
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: false
+        load: true
+        tags: crio-test:latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        build-args: |
+          CRIO_VERSION=v1.30.0
+
+    - name: Test image
+      run: |
+        docker run --rm crio-test:latest --version
+
+  lint-dockerfile:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Run Hadolint
+      uses: hadolint/hadolint-action@v3.1.0
+      with:
+        dockerfile: Dockerfile
+        config: .hadolint.yaml
+        failure-threshold: warning
