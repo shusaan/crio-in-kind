@@ -10,7 +10,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  CRIO_VERSION: v1.30.0
+  CRIO_VERSION: v1.31.2
 
 jobs:
   build-and-push:

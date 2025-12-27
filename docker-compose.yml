@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        CRIO_VERSION: v1.30.0
+        CRIO_VERSION: v1.31.2
     image: crio-in-kind:latest
     container_name: crio-container
     privileged: true
@@ -24,7 +24,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        CRIO_VERSION: v1.30.0
+        CRIO_VERSION: v1.31.2
     image: crio-in-kind:test
     container_name: crio-test
     command: ["--version"]

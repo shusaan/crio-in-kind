@@ -1,8 +1,8 @@
 # Multi-stage build for CRI-O
-FROM golang:1.23-bullseye AS builder
+FROM golang:1.25-bullseye AS builder
 
 # CRI-O version to build
-ARG CRIO_VERSION=v1.30.0
+ARG CRIO_VERSION=v1.31.2
 
 # Install dependencies in a single layer
 RUN apt-get update && apt-get install -y --no-install-recommends \
