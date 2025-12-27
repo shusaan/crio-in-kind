@@ -1,65 +1,24 @@
-# Multi-stage build for CRI-O
-FROM golang:1.25-trixie AS builder
+ARG KUBERNETES_VERSION=v1.31.0
+FROM kindest/node:${KUBERNETES_VERSION}
 
-# CRI-O version to build
-ARG CRIO_VERSION=v1.31.2
+ARG CRIO_VERSION
+ARG PROJECT_PATH=prerelease:/$CRIO_VERSION
 
-# Install dependencies in a single layer
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    git \
-    pkg-config \
-    libgpgme-dev \
-    libassuan-dev \
-    libbtrfs-dev \
-    libdevmapper-dev \
-    libseccomp-dev \
-    libsystemd-dev \
-    && rm -rf /var/lib/apt/lists/*
+# Set shell options for better error handling
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Set working directory
-WORKDIR /go/src/github.com/cri-o/cri-o
-
-# Clone and build in separate steps for better caching
-RUN git clone --depth 1 --branch ${CRIO_VERSION} https://github.com/cri-o/cri-o.git .
-
-# Build CRI-O with optimizations
-RUN make BUILDTAGS="containers_image_ostree_stub containers_image_openpgp" && \
-    ls -la bin/
-
-# Runtime stage - use matching Trixie base for glibc compatibility
-FROM debian:trixie-slim
-
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    iptables \
-    runc \
-    libdevmapper1.02.1 \
-    libgpgme11 \
-    libassuan9 \
-    libseccomp2 \
-    libsystemd0 \
-    libbtrfs0 \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy CRI-O binaries from builder
-COPY --from=builder /go/src/github.com/cri-o/cri-o/bin/ /usr/local/bin/
-
-# Debug: Check what libraries crio needs
-RUN ldd /usr/local/bin/crio || true
-
-# Create necessary directories
-RUN mkdir -p /etc/crio /var/lib/containers/storage /var/run/crio
-
-# Create a basic CRI-O configuration
-RUN echo '[crio]' > /etc/crio/crio.conf && \
-    echo 'storage_driver = "overlay"' >> /etc/crio/crio.conf && \
-    echo 'storage_option = ["overlay.mount_program=/usr/bin/fuse-overlayfs"]' >> /etc/crio/crio.conf
-
-# Expose CRI-O socket
-VOLUME ["/var/run/crio"]
-
-# Set entrypoint
-ENTRYPOINT ["/usr/local/bin/crio"]
-CMD ["--config", "/etc/crio/crio.conf"]
+RUN echo "Installing Packages ..." \
+    && apt-get clean \
+    && apt-get update -y \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    software-properties-common vim gnupg \
+    && echo "Installing cri-o ..." \
+    && curl -fsSL https://download.opensuse.org/repositories/isv:/cri-o:/$PROJECT_PATH/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/cri-o-apt-keyring.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/cri-o-apt-keyring.gpg] https://download.opensuse.org/repositories/isv:/cri-o:/$PROJECT_PATH/deb/ /" | tee /etc/apt/sources.list.d/cri-o.list \
+    && apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get --option=Dpkg::Options::=--force-confdef install -y cri-o podman \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && sed -i 's/containerd/crio/g' /etc/crictl.yaml \
+    && systemctl disable containerd \
+    && systemctl enable crio

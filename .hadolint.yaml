@@ -1,6 +1,10 @@
 ignored:
+  - DL3007  # Using latest is prone to errors - we use parameterized version
   - DL3008  # Pin versions in apt get install
   - DL3015  # Avoid additional packages by specifying --no-install-recommends
+
+# We ignore DL3007 because:
+# We use ARG KUBERNETES_VERSION with a specific default version, not "latest"
 
 # We ignore DL3008 because:
 # 1. Exact version pinning can cause build failures across different architectures
