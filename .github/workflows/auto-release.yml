@@ -1,0 +1,260 @@
+name: Auto Release on Upstream Updates
+
+on:
+  schedule:
+    # Check for new versions weekly on Mondays at 6 AM UTC
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      force_release:
+        description: 'Force release even if no version changes detected'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  check-upstream-versions:
+    runs-on: ubuntu-latest
+    outputs:
+      crio_latest: ${{ steps.versions.outputs.crio_latest }}
+      k8s_latest: ${{ steps.versions.outputs.k8s_latest }}
+      crio_current: ${{ steps.versions.outputs.crio_current }}
+      k8s_current: ${{ steps.versions.outputs.k8s_current }}
+      should_release: ${{ steps.compare.outputs.should_release }}
+      release_tag: ${{ steps.versions.outputs.release_tag }}
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Get current and latest versions
+      id: versions
+      run: |
+        # Get current versions from Dockerfile
+        CURRENT_CRIO=$(grep "ARG CRIO_VERSION" Dockerfile | head -1 | sed 's/.*=//' || echo "")
+        CURRENT_K8S=$(grep "ARG KUBERNETES_VERSION" Dockerfile | head -1 | sed 's/.*=//' || echo "v1.31.0")
+        
+        # Get latest versions from GitHub APIs
+        LATEST_CRIO=$(curl -s https://api.github.com/repos/cri-o/cri-o/releases/latest | jq -r '.tag_name')
+        LATEST_K8S=$(curl -s https://api.github.com/repos/kubernetes/kubernetes/releases | jq -r '.[0].tag_name')
+        
+        # Create release tag based on CRI-O version (primary component)
+        RELEASE_TAG="${LATEST_CRIO}-k8s-${LATEST_K8S}"
+        
+        echo "crio_current=$CURRENT_CRIO" >> $GITHUB_OUTPUT
+        echo "k8s_current=$CURRENT_K8S" >> $GITHUB_OUTPUT
+        echo "crio_latest=$LATEST_CRIO" >> $GITHUB_OUTPUT
+        echo "k8s_latest=$LATEST_K8S" >> $GITHUB_OUTPUT
+        echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
+        
+        echo "Current CRI-O: $CURRENT_CRIO"
+        echo "Latest CRI-O: $LATEST_CRIO"
+        echo "Current K8s: $CURRENT_K8S"
+        echo "Latest K8s: $LATEST_K8S"
+        echo "Release tag: $RELEASE_TAG"
+
+    - name: Check if release needed
+      id: compare
+      run: |
+        CURRENT_CRIO="${{ steps.versions.outputs.crio_current }}"
+        LATEST_CRIO="${{ steps.versions.outputs.crio_latest }}"
+        CURRENT_K8S="${{ steps.versions.outputs.k8s_current }}"
+        LATEST_K8S="${{ steps.versions.outputs.k8s_latest }}"
+        FORCE_RELEASE="${{ github.event.inputs.force_release }}"
+        
+        SHOULD_RELEASE=false
+        RELEASE_REASON=""
+        
+        echo "🔍 Checking if release is needed..."
+        echo "Current CRI-O: $CURRENT_CRIO"
+        echo "Latest CRI-O: $LATEST_CRIO"
+        echo "Current K8s: $CURRENT_K8S"
+        echo "Latest K8s: $LATEST_K8S"
+        echo "Force release: $FORCE_RELEASE"
+        
+        # Check if versions changed or force release requested
+        if [ "$CURRENT_CRIO" != "$LATEST_CRIO" ]; then
+          SHOULD_RELEASE=true
+          RELEASE_REASON="CRI-O version updated: $CURRENT_CRIO → $LATEST_CRIO"
+        elif [ "$CURRENT_K8S" != "$LATEST_K8S" ]; then
+          SHOULD_RELEASE=true
+          RELEASE_REASON="Kubernetes version updated: $CURRENT_K8S → $LATEST_K8S"
+        elif [ "$FORCE_RELEASE" = "true" ]; then
+          SHOULD_RELEASE=true
+          RELEASE_REASON="Manual force release requested"
+        fi
+        
+        # Check if this release tag already exists
+        RELEASE_TAG="${{ steps.versions.outputs.release_tag }}"
+        if [ "$SHOULD_RELEASE" = "true" ] && git tag -l | grep -q "^$RELEASE_TAG$"; then
+          echo "❌ Release tag $RELEASE_TAG already exists, skipping release"
+          SHOULD_RELEASE=false
+          RELEASE_REASON="Release already exists"
+        fi
+        
+        echo "should_release=$SHOULD_RELEASE" >> $GITHUB_OUTPUT
+        echo "release_reason=$RELEASE_REASON" >> $GITHUB_OUTPUT
+        
+        if [ "$SHOULD_RELEASE" = "true" ]; then
+          echo "✅ RELEASE NEEDED: $RELEASE_REASON"
+          echo "🚀 Will proceed with building and releasing image"
+        else
+          echo "⏭️  NO RELEASE NEEDED: No version changes detected"
+          echo "🛑 Stopping pipeline - nothing to do"
+        fi
+
+  no-release-needed:
+    needs: check-upstream-versions
+    if: needs.check-upstream-versions.outputs.should_release == 'false'
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: No release needed
+      run: |
+        echo "⏭️  No new releases found - pipeline stopped"
+        echo ""
+        echo "📊 Current Status:"
+        echo "   CRI-O: ${{ needs.check-upstream-versions.outputs.crio_current }} (latest: ${{ needs.check-upstream-versions.outputs.crio_latest }})"
+        echo "   Kubernetes: ${{ needs.check-upstream-versions.outputs.k8s_current }} (latest: ${{ needs.check-upstream-versions.outputs.k8s_latest }})"
+        echo ""
+        echo "✅ Repository is up to date!"
+        echo "🔄 Next check: Weekly on Monday at 6 AM UTC"
+
+  auto-release:
+    needs: check-upstream-versions
+    if: needs.check-upstream-versions.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Update versions in files
+      run: |
+        CRIO_LATEST="${{ needs.check-upstream-versions.outputs.crio_latest }}"
+        K8S_LATEST="${{ needs.check-upstream-versions.outputs.k8s_latest }}"
+        
+        # Update Dockerfile
+        sed -i "s/ARG KUBERNETES_VERSION=.*/ARG KUBERNETES_VERSION=$K8S_LATEST/" Dockerfile
+        sed -i "s/ARG CRIO_VERSION.*/ARG CRIO_VERSION=$CRIO_LATEST/" Dockerfile
+        
+        # Update README version references
+        sed -i "s/crio-in-kind:v[0-9]\+\.[0-9]\+/crio-in-kind:$CRIO_LATEST/g" README.md
+        sed -i "s/kindest\/node:v[0-9]\+\.[0-9]\+\.[0-9]\+/kindest\/node:$K8S_LATEST/" README.md
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=raw,value=${{ needs.check-upstream-versions.outputs.crio_latest }}
+          type=raw,value=${{ needs.check-upstream-versions.outputs.release_tag }}
+          type=raw,value=latest
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        build-args: |
+          CRIO_VERSION=${{ needs.check-upstream-versions.outputs.crio_latest }}
+          KUBERNETES_VERSION=${{ needs.check-upstream-versions.outputs.k8s_latest }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Test the built image
+      run: |
+        # Pull and test the image
+        docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.check-upstream-versions.outputs.crio_latest }}
+        
+        # Basic smoke test
+        docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.check-upstream-versions.outputs.crio_latest }} crio version
+
+    - name: Commit version updates
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add Dockerfile README.md
+        git commit -m "chore: update to CRI-O ${{ needs.check-upstream-versions.outputs.crio_latest }} and Kubernetes ${{ needs.check-upstream-versions.outputs.k8s_latest }}" || exit 0
+        git push
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ needs.check-upstream-versions.outputs.release_tag }}
+        name: "CRI-O ${{ needs.check-upstream-versions.outputs.crio_latest }} + Kubernetes ${{ needs.check-upstream-versions.outputs.k8s_latest }}"
+        body: |
+          ## 🚀 Automated Release
+          
+          This release includes the latest upstream versions:
+          
+          ### 📦 What's Included
+          - **CRI-O**: `${{ needs.check-upstream-versions.outputs.crio_latest }}`
+          - **Kubernetes**: `${{ needs.check-upstream-versions.outputs.k8s_latest }}`
+          - **Base Image**: `kindest/node:${{ needs.check-upstream-versions.outputs.k8s_latest }}`
+          
+          ### 🐳 Docker Images
+          ```bash
+          # Pull the image
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.check-upstream-versions.outputs.crio_latest }}
+          
+          # Use with KIND
+          kind create cluster --image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.check-upstream-versions.outputs.crio_latest }}
+          ```
+          
+          ### 🏷️ Available Tags
+          - `${{ needs.check-upstream-versions.outputs.crio_latest }}` - CRI-O version tag
+          - `${{ needs.check-upstream-versions.outputs.release_tag }}` - Full version tag
+          - `latest` - Latest release
+          
+          ### 🧪 Testing
+          Test Kubernetes 1.34+ features like Docker image name blocking:
+          ```bash
+          kubectl apply -f examples/test-image-name-blocking.yaml
+          ```
+          
+          ### 📋 Changes from Previous Release
+          - Updated CRI-O from `${{ needs.check-upstream-versions.outputs.crio_current }}` to `${{ needs.check-upstream-versions.outputs.crio_latest }}`
+          - Updated Kubernetes from `${{ needs.check-upstream-versions.outputs.k8s_current }}` to `${{ needs.check-upstream-versions.outputs.k8s_latest }}`
+          
+          ---
+          
+          *This release was automatically created when new upstream versions were detected.*
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+
+  notify-success:
+    needs: [check-upstream-versions, auto-release]
+    if: needs.check-upstream-versions.outputs.should_release == 'true' && success()
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Notify success
+      run: |
+        echo "✅ Successfully released CRI-O KIND image:"
+        echo "   Tag: ${{ needs.check-upstream-versions.outputs.release_tag }}"
+        echo "   CRI-O: ${{ needs.check-upstream-versions.outputs.crio_latest }}"
+        echo "   Kubernetes: ${{ needs.check-upstream-versions.outputs.k8s_latest }}"
+        echo "   Registry: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
