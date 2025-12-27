@@ -1,5 +1,5 @@
 # Multi-stage build for CRI-O
-FROM golang:1.25-bullseye AS builder
+FROM golang:1.25-trixie AS builder
 
 # CRI-O version to build
 ARG CRIO_VERSION=v1.31.2
@@ -27,8 +27,8 @@ RUN git clone --depth 1 --branch ${CRIO_VERSION} https://github.com/cri-o/cri-o.
 RUN make BUILDTAGS="containers_image_ostree_stub containers_image_openpgp" && \
     ls -la bin/
 
-# Runtime stage - use same base as builder for compatibility
-FROM debian:bullseye-slim
+# Runtime stage - use matching Trixie base for glibc compatibility
+FROM debian:trixie-slim
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -37,7 +37,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     runc \
     libdevmapper1.02.1 \
     libgpgme11 \
-    libassuan0 \
+    libassuan9 \
     libseccomp2 \
     libsystemd0 \
     libbtrfs0 \
