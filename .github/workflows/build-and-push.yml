@@ -10,6 +10,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  CRIO_VERSION: v1.30.0
 
 jobs:
   build-and-push:
@@ -46,6 +47,8 @@ jobs:
           type=semver,pattern={{version}}
           type=semver,pattern={{major}}.{{minor}}
           type=semver,pattern={{major}}
+          type=raw,value=${{ env.CRIO_VERSION }}
+          type=raw,value=latest,enable={{is_default_branch}}
           type=sha
 
     - name: Build and push Docker image
@@ -59,13 +62,13 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
         build-args: |
-          CRIO_VERSION=v1.30.0
+          CRIO_VERSION=${{ env.CRIO_VERSION }}
 
     - name: Run Trivy vulnerability scanner
       if: github.event_name != 'pull_request' && github.repository_owner == github.actor
       uses: aquasecurity/trivy-action@master
       with:
-        image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+        image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.CRIO_VERSION }}
         format: 'sarif'
         output: 'trivy-results.sarif'
 
