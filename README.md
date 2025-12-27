@@ -12,6 +12,68 @@ This repository provides the necessary files to create Kubernetes in Docker (KIN
 - Docker or Podman
 - kubectl
 
+## How to Use with KIND
+
+### Method 1: Using Pre-built Images (Recommended)
+
+The easiest way is to use our pre-built images from GitHub Container Registry:
+
+```bash
+# Create KIND cluster with CRI-O image
+kind create cluster \
+  --name my-crio-cluster \
+  --image ghcr.io/shusaan/crio-in-kind:v1.33 \
+  --config kind-crio.yaml
+```
+
+### Method 2: Using Local Build
+
+If you prefer to build the image locally:
+
+```bash
+# Build the image
+./scripts/build-kind-image.sh
+
+# Create cluster with local image
+kind create cluster \
+  --name my-crio-cluster \
+  --image kindnode/crio:v1.33 \
+  --config kind-crio.yaml
+```
+
+### Method 3: Using Helper Script
+
+Use our convenience script that handles everything:
+
+```bash
+# Set cluster name (optional)
+export CLUSTER_NAME=my-crio-cluster
+
+# Create cluster
+./scripts/create-kind-cluster.sh
+```
+
+### Verify CRI-O Runtime
+
+After creating the cluster, verify it's using CRI-O:
+
+```bash
+# Check cluster info
+kubectl cluster-info --context kind-my-crio-cluster
+
+# Verify container runtime
+kubectl get nodes -o jsonpath='{.items[*].status.nodeInfo.containerRuntimeVersion}'
+# Expected output: cri-o://1.33.x
+```
+
+### Available Image Tags
+
+Our images are available with multiple tags:
+
+- `ghcr.io/shusaan/crio-in-kind:v1.33` - Specific CRI-O version
+- `ghcr.io/shusaan/crio-in-kind:latest` - Latest stable build
+- `ghcr.io/shusaan/crio-in-kind:main` - Latest from main branch
+
 ## Quick Start
 
 ### Option 1: Use Pre-built Image (Recommended)
@@ -72,6 +134,9 @@ kubectl port-forward svc/httpbin 8000:8000
 
 # Test in another terminal
 curl -X GET localhost:8000/get
+
+# Test Docker image name blocking (K8s 1.34+)
+kubectl apply -f examples/test-image-name-blocking.yaml
 ```
 
 ## CI/CD
@@ -90,6 +155,43 @@ The CI/CD pipeline performs a sophisticated build process:
 3. **Migrates Kubernetes images** from containerd storage to CRI-O storage
 4. **Commits final image** with proper KIND entrypoint restored
 5. **Tags and pushes** to GitHub Container Registry
+
+### Workflows Explained
+
+We use two separate GitHub Actions workflows for different purposes:
+
+#### `test.yml` - Testing & Validation
+- **Purpose**: Fast feedback and quality checks
+- **Triggers**: Every push and pull request
+- **Actions**: Build validation, Dockerfile linting
+- **Speed**: Fast (no registry operations)
+- **Security**: Safe for external PRs
+
+#### `build-and-push.yml` - Production Build & Deploy
+- **Purpose**: Build and publish production images
+- **Triggers**: Main/develop branches and tags only
+- **Actions**: Full build, registry push, security scanning
+- **Speed**: Slower (includes scanning and publishing)
+- **Security**: Restricted to trusted branches
+
+#### `version-update.yml` - Automated Version Management
+- **Purpose**: Automatically update CRI-O and Kubernetes versions
+- **Triggers**: Weekly schedule (Mondays) + manual dispatch
+- **Actions**: Check latest versions, update files, create PR
+- **Branch**: Creates `automated-version-update` branch
+- **Automation**: Fully automated version maintenance
+
+This separation provides both **fast feedback** for developers and **secure publishing** for production images.
+
+### Branch Strategy
+
+The project follows a simple branching strategy:
+
+- **`main`** - Production branch, triggers image builds and pushes
+- **`develop`** - Development branch, triggers image builds and pushes  
+- **`automated-version-update`** - Auto-created by version update workflow
+- **`feature/*`** - Feature branches, only trigger tests (no image push)
+- **`fix/*`** - Bug fix branches, only trigger tests (no image push)
 
 ### Registry
 
@@ -111,7 +213,7 @@ Images are automatically pushed to `ghcr.io/[username]/crio-in-kind` on:
 
 The build process creates a fully functional KIND node with CRI-O:
 
-1. **Base Image**: Starts with official `kindest/node:latest`
+1. **Base Image**: Starts with official `kindest/node:v1.31.0` (configurable)
 2. **Install CRI-O**: Adds CRI-O packages from OpenSUSE repositories
 3. **Configure Runtime**: 
    - Switches crictl from containerd to CRI-O
@@ -132,27 +234,12 @@ The build process creates a fully functional KIND node with CRI-O:
 │   └── create-kind-cluster.sh  # Script to create KIND cluster
 ├── kind-crio.yaml              # KIND cluster configuration
 ├── examples/
-│   └── httpbin.yaml           # Sample Kubernetes application
+│   ├── httpbin.yaml                    # Sample Kubernetes application
+│   └── test-image-name-blocking.yaml  # Test for K8s 1.34+ image name blocking
 └── README.md                  # This file
 ```
 
 ## Configuration
-
-### CRI-O Version
-
-Change the CRI-O version by updating the environment variable in `.github/workflows/build-and-push.yml`:
-
-```yaml
-env:
-  CRIO_VERSION: v1.33  # Change this to desired version
-```
-
-For local builds:
-
-```bash
-export CRIO_VERSION=v1.32  # or any supported version
-./scripts/build-kind-image.sh
-```
 
 ### KIND Cluster Configuration
 
@@ -184,6 +271,9 @@ export CRIO_VERSION=v1.33
 
 # Test with sample app
 kubectl apply -f examples/httpbin.yaml
+
+# Test Docker image name blocking behavior (K8s 1.34+)
+kubectl apply -f examples/test-image-name-blocking.yaml
 ```
 
 ### Contributing
@@ -227,9 +317,93 @@ kubectl get nodes -o jsonpath='{.items[*].status.nodeInfo.containerRuntimeVersio
 ## Supported Versions
 
 - **CRI-O**: v1.30+ (configurable via environment variable)
-- **KIND**: Latest stable
-- **Kubernetes**: Compatible with KIND's supported versions
+- **Kubernetes**: v1.29+ (configurable via KIND node version)
+- **KIND**: Latest stable (uses kindest/node images)
 - **Container Images**: Automatically migrated from containerd to CRI-O
+
+## Why Use CRI-O with KIND?
+
+### Benefits Over Default KIND Images
+
+Official KIND images use **containerd** as the container runtime, but this project provides **CRI-O** as an alternative with several advantages:
+
+#### **Performance Benefits**
+- **Faster startup times** - CRI-O has less overhead than containerd
+- **Lower memory usage** - More lightweight runtime footprint
+- **Better resource utilization** - Optimized for Kubernetes workloads
+
+#### **Security Advantages**
+- **Reduced attack surface** - CRI-O is purpose-built for Kubernetes only
+- **Enhanced security features** - Built-in security policies and controls
+- **OCI compliance** - Follows Open Container Initiative standards strictly
+
+#### **Production Alignment**
+- **Real-world testing** - Many production environments use CRI-O
+- **Red Hat/OpenShift compatibility** - Same runtime used in OpenShift
+- **Enterprise readiness** - Test your apps with production-grade runtime
+
+#### **Development Benefits**
+- **Debugging capabilities** - Better tooling for container inspection
+- **Kubernetes-native** - Designed specifically for Kubernetes CRI
+- **Simplified architecture** - No Docker daemon complexity
+
+### When to Use This Image
+
+✅ **Use CRI-O KIND image when:**
+- **Testing runtime-specific behaviors** - CRI-O vs containerd differences
+- **Kubernetes security features** - Testing features that behave differently with CRI-O
+- **Docker image name blocking validation** - K8s 1.34+ blocks short image names only with CRI-O
+- **Production environment simulation** - Many production clusters use CRI-O
+- **OpenShift/Red Hat compatibility** - Same runtime used in OpenShift
+- **Container runtime debugging** - Investigating CRI-O specific issues
+- **Security policy testing** - CRI-O has different security implementations
+- **Performance benchmarking** - Comparing CRI-O vs containerd performance
+
+❌ **Use standard KIND when:**
+- Just learning Kubernetes basics
+- Need Docker-in-Docker functionality
+- Using Docker-specific features
+- Working with legacy Docker workflows
+
+### Real-World Use Case: Docker Image Name Blocking
+
+A perfect example of why you need CRI-O for testing:
+
+**Problem**: Kubernetes 1.34+ implements short Docker image name blocking for security, but this feature behaves differently between container runtimes.
+
+**With KIND (containerd)**: Short image names like `nginx:latest` may still be allowed
+**With CRI-O KIND**: Proper image name blocking behavior matches production - short names are blocked
+
+```bash
+# Test Docker image name blocking with CRI-O
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-short-image
+spec:
+  containers:
+  - name: test
+    image: nginx:latest  # This should be blocked in K8s 1.34+ with CRI-O
+EOF
+
+# With CRI-O in K8s 1.34+: Pod creation fails (short name blocked)
+# With containerd: May still allow short names (inconsistent behavior)
+
+# The correct way in K8s 1.34+:
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-full-image
+spec:
+  containers:
+  - name: test
+    image: docker.io/library/nginx:latest  # Full name always works
+EOF
+```
+
+## How to Use with KIND
 
 ## References
 

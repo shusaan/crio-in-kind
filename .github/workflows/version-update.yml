@@ -1,0 +1,168 @@
+name: Automated Version Updates
+
+on:
+  schedule:
+    # Run weekly on Mondays at 9 AM UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+    inputs:
+      crio_version:
+        description: 'CRI-O version to update to (e.g., v1.34.0)'
+        required: false
+        type: string
+      kubernetes_version:
+        description: 'Kubernetes version to update to (e.g., v1.32.0)'
+        required: false
+        type: string
+
+jobs:
+  check-versions:
+    runs-on: ubuntu-latest
+    outputs:
+      crio_latest: ${{ steps.get-versions.outputs.crio_latest }}
+      k8s_latest: ${{ steps.get-versions.outputs.k8s_latest }}
+      crio_current: ${{ steps.get-versions.outputs.crio_current }}
+      k8s_current: ${{ steps.get-versions.outputs.k8s_current }}
+      update_needed: ${{ steps.compare.outputs.update_needed }}
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Get current versions
+      id: get-current
+      run: |
+        CURRENT_CRIO=$(grep "CRIO_VERSION:" .github/workflows/build-and-push.yml | head -1 | sed 's/.*CRIO_VERSION: //' | tr -d ' ')
+        CURRENT_K8S=$(grep "KUBERNETES_VERSION:" .github/workflows/build-and-push.yml | head -1 | sed 's/.*KUBERNETES_VERSION: //' | tr -d ' ')
+        echo "crio_current=$CURRENT_CRIO" >> $GITHUB_OUTPUT
+        echo "k8s_current=$CURRENT_K8S" >> $GITHUB_OUTPUT
+
+    - name: Get latest versions
+      id: get-versions
+      run: |
+        # Get latest CRI-O version from GitHub API
+        if [ -n "${{ github.event.inputs.crio_version }}" ]; then
+          CRIO_LATEST="${{ github.event.inputs.crio_version }}"
+        else
+          CRIO_LATEST=$(curl -s https://api.github.com/repos/cri-o/cri-o/releases/latest | jq -r '.tag_name')
+        fi
+        
+        # Get latest Kubernetes version from GitHub API
+        if [ -n "${{ github.event.inputs.kubernetes_version }}" ]; then
+          K8S_LATEST="${{ github.event.inputs.kubernetes_version }}"
+        else
+          K8S_LATEST=$(curl -s https://api.github.com/repos/kubernetes/kubernetes/releases | jq -r '.[0].tag_name')
+        fi
+        
+        echo "crio_latest=$CRIO_LATEST" >> $GITHUB_OUTPUT
+        echo "k8s_latest=$K8S_LATEST" >> $GITHUB_OUTPUT
+        echo "Current CRI-O: ${{ steps.get-current.outputs.crio_current }}"
+        echo "Latest CRI-O: $CRIO_LATEST"
+        echo "Current K8s: ${{ steps.get-current.outputs.k8s_current }}"
+        echo "Latest K8s: $K8S_LATEST"
+
+    - name: Compare versions
+      id: compare
+      run: |
+        CURRENT_CRIO="${{ steps.get-current.outputs.crio_current }}"
+        LATEST_CRIO="${{ steps.get-versions.outputs.crio_latest }}"
+        CURRENT_K8S="${{ steps.get-current.outputs.k8s_current }}"
+        LATEST_K8S="${{ steps.get-versions.outputs.k8s_latest }}"
+        
+        UPDATE_NEEDED=false
+        
+        if [ "$CURRENT_CRIO" != "$LATEST_CRIO" ] || [ "$CURRENT_K8S" != "$LATEST_K8S" ]; then
+          UPDATE_NEEDED=true
+        fi
+        
+        echo "update_needed=$UPDATE_NEEDED" >> $GITHUB_OUTPUT
+        echo "Update needed: $UPDATE_NEEDED"
+
+  update-versions:
+    needs: check-versions
+    if: needs.check-versions.outputs.update_needed == 'true'
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Update workflow files
+      run: |
+        CRIO_LATEST="${{ needs.check-versions.outputs.crio_latest }}"
+        K8S_LATEST="${{ needs.check-versions.outputs.k8s_latest }}"
+        
+        # Update build-and-push.yml
+        sed -i "s/CRIO_VERSION: .*/CRIO_VERSION: $CRIO_LATEST/" .github/workflows/build-and-push.yml
+        sed -i "s/KUBERNETES_VERSION: .*/KUBERNETES_VERSION: $K8S_LATEST/" .github/workflows/build-and-push.yml
+        
+        # Update test.yml
+        sed -i "s/CRIO_VERSION=.*/CRIO_VERSION=$CRIO_LATEST/" .github/workflows/test.yml
+        sed -i "s/KUBERNETES_VERSION=.*/KUBERNETES_VERSION=$K8S_LATEST/" .github/workflows/test.yml
+
+    - name: Update Dockerfile
+      run: |
+        K8S_LATEST="${{ needs.check-versions.outputs.k8s_latest }}"
+        sed -i "s/ARG KUBERNETES_VERSION=.*/ARG KUBERNETES_VERSION=$K8S_LATEST/" Dockerfile
+
+    - name: Update build script
+      run: |
+        CRIO_LATEST="${{ needs.check-versions.outputs.crio_latest }}"
+        K8S_LATEST="${{ needs.check-versions.outputs.k8s_latest }}"
+        
+        sed -i "s/CRIO_VERSION=\${CRIO_VERSION:-.*}/CRIO_VERSION=\${CRIO_VERSION:-$CRIO_LATEST}/" scripts/build-kind-image.sh
+        sed -i "s/KUBERNETES_VERSION=\${KUBERNETES_VERSION:-.*}/KUBERNETES_VERSION=\${KUBERNETES_VERSION:-$K8S_LATEST}/" scripts/build-kind-image.sh
+
+    - name: Update README
+      run: |
+        CRIO_LATEST="${{ needs.check-versions.outputs.crio_latest }}"
+        K8S_LATEST="${{ needs.check-versions.outputs.k8s_latest }}"
+        
+        # Update version references in README
+        sed -i "s/crio-in-kind:v[0-9]\+\.[0-9]\+/crio-in-kind:${CRIO_LATEST}/g" README.md
+        sed -i "s/CRIO_VERSION: v[0-9]\+\.[0-9]\+/CRIO_VERSION: $CRIO_LATEST/g" README.md
+        sed -i "s/KUBERNETES_VERSION: v[0-9]\+\.[0-9]\+\.[0-9]\+/KUBERNETES_VERSION: $K8S_LATEST/g" README.md
+
+    - name: Create Pull Request
+      uses: peter-evans/create-pull-request@v5
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commit-message: |
+          chore: update versions to CRI-O ${{ needs.check-versions.outputs.crio_latest }} and Kubernetes ${{ needs.check-versions.outputs.k8s_latest }}
+          
+          - Update CRI-O from ${{ needs.check-versions.outputs.crio_current }} to ${{ needs.check-versions.outputs.crio_latest }}
+          - Update Kubernetes from ${{ needs.check-versions.outputs.k8s_current }} to ${{ needs.check-versions.outputs.k8s_latest }}
+          
+          Auto-generated by version-update workflow
+        title: 'chore: update CRI-O to ${{ needs.check-versions.outputs.crio_latest }} and Kubernetes to ${{ needs.check-versions.outputs.k8s_latest }}'
+        body: |
+          ## Automated Version Update
+          
+          This PR updates the project to use the latest stable versions:
+          
+          ### Changes
+          - **CRI-O**: `${{ needs.check-versions.outputs.crio_current }}` → `${{ needs.check-versions.outputs.crio_latest }}`
+          - **Kubernetes**: `${{ needs.check-versions.outputs.k8s_current }}` → `${{ needs.check-versions.outputs.k8s_latest }}`
+          
+          ### Files Updated
+          - `.github/workflows/build-and-push.yml`
+          - `.github/workflows/test.yml`
+          - `Dockerfile`
+          - `scripts/build-kind-image.sh`
+          - `README.md`
+          
+          ### Testing Required
+          - [ ] Verify CI/CD pipelines pass
+          - [ ] Test local build with new versions
+          - [ ] Validate KIND cluster creation
+          - [ ] Test sample application deployment
+          
+          **Note**: This PR was automatically created by the version-update workflow.
+        branch: automated-version-update
+        delete-branch: true
+        labels: |
+          automated
+          versions
+          maintenance
