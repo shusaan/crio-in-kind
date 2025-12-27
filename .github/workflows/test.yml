@@ -1,4 +1,4 @@
-name: Test CRI-O Build
+name: Test KIND CRI-O Build
 
 on:
   push:
@@ -17,21 +17,48 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
-    - name: Build Docker image (test)
+    - name: Build intermediate KIND CRI-O image (test)
       uses: docker/build-push-action@v5
       with:
         context: .
         push: false
         load: true
-        tags: crio-test:latest
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+        tags: kindnode/crio:v1.33-tmp
         build-args: |
-          CRIO_VERSION=v1.30.0
+          CRIO_VERSION=v1.33
 
-    - name: Test image
+    - name: Build final KIND CRI-O image (test)
       run: |
-        docker run --rm crio-test:latest --version
+        CRIO_VERSION=v1.33
+        TARGET="kindnode/crio:$CRIO_VERSION"
+        INTERMEDIATE="kindnode/crio:$CRIO_VERSION-tmp"
+        
+        echo "Building final test image $TARGET ..."
+        
+        # Run the intermediate image in the background
+        docker run --privileged --rm -d --name crio-builder --entrypoint sleep $INTERMEDIATE infinity
+        
+        # Start crio & containerd daemons
+        docker exec -d crio-builder containerd
+        docker exec -d crio-builder crio
+        
+        # Wait for daemons to start
+        sleep 10
+        
+        # Migrate the pinned kube-* images from containerd to cri-o
+        docker exec crio-builder bash -c 'for IMG in $(ctr -n k8s.io images list -q | grep "registry.k8s.io/kube-"); do echo "Migrating $IMG ..." && ctr -n k8s.io image export --platform "linux/amd64" - "$IMG" | podman load; done'
+        
+        # Commit the final image, restoring the original entrypoint
+        docker commit --change 'ENTRYPOINT [ "/usr/local/bin/entrypoint", "/sbin/init" ]' crio-builder $TARGET
+        
+        # Stop the builder container
+        docker kill crio-builder
+        
+        echo "Finished building test image: $TARGET"
+
+    - name: Test image exists
+      run: |
+        docker images | grep kindnode/crio
 
   lint-dockerfile:
     runs-on: ubuntu-latest
@@ -44,5 +71,4 @@ jobs:
       uses: hadolint/hadolint-action@v3.1.0
       with:
         dockerfile: Dockerfile
-        config: .hadolint.yaml
         failure-threshold: warning
