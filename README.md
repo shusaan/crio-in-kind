@@ -139,107 +139,12 @@ curl -X GET localhost:8000/get
 kubectl apply -f examples/test-image-name-blocking.yaml
 ```
 
-## CI/CD
-
-This repository includes automated GitHub Actions workflows:
-
-- **build-and-push.yml**: Builds KIND CRI-O images and pushes to GitHub Container Registry
-- **test.yml**: Tests the Docker build process and runs Dockerfile linting
-
-### Build Process
-
-The CI/CD pipeline performs a sophisticated build process:
-
-1. **Builds intermediate image** from Dockerfile (installs CRI-O packages)
-2. **Runs privileged container** to start both containerd and CRI-O daemons
-3. **Migrates Kubernetes images** from containerd storage to CRI-O storage
-4. **Commits final image** with proper KIND entrypoint restored
-5. **Tags and pushes** to GitHub Container Registry
-
-### Workflows Explained
-
-We use two separate GitHub Actions workflows for different purposes:
-
-#### `test.yml` - Testing & Validation
-- **Purpose**: Fast feedback and quality checks
-- **Triggers**: Every push and pull request
-- **Actions**: Build validation, Dockerfile linting
-- **Speed**: Fast (no registry operations)
-- **Security**: Safe for external PRs
-
-#### `build-and-push.yml` - Production Build & Deploy
-- **Purpose**: Build and publish production images
-- **Triggers**: Main/develop branches and tags only
-- **Actions**: Full build, registry push, security scanning
-- **Speed**: Slower (includes scanning and publishing)
-- **Security**: Restricted to trusted branches
-
-#### `version-update.yml` - Automated Version Management
-- **Purpose**: Automatically update CRI-O and Kubernetes versions
-- **Triggers**: Weekly schedule (Mondays) + manual dispatch
-- **Actions**: Check latest versions, update files, create PR
-- **Branch**: Creates `automated-version-update` branch
-- **Automation**: Fully automated version maintenance
-
-This separation provides both **fast feedback** for developers and **secure publishing** for production images.
-
-### Branch Strategy
-
-The project follows a simple branching strategy:
-
-- **`main`** - Production branch, triggers image builds and pushes
-- **`develop`** - Development branch, triggers image builds and pushes  
-- **`automated-version-update`** - Auto-created by version update workflow
-- **`feature/*`** - Feature branches, only trigger tests (no image push)
-- **`fix/*`** - Bug fix branches, only trigger tests (no image push)
-
-### Registry
-
-Images are automatically pushed to `ghcr.io/[username]/crio-in-kind` on:
-- Push to main/develop branches
-- Tagged releases
-- Pull requests (build only, no push)
-
 ### Available Tags
 
 - `ghcr.io/[username]/crio-in-kind:v1.33` - CRI-O version tag
 - `ghcr.io/[username]/crio-in-kind:latest` - Latest build from main branch
 - `ghcr.io/[username]/crio-in-kind:main` - Main branch builds
 - `ghcr.io/[username]/crio-in-kind:sha-xxxxxxx` - Specific commit builds
-
-## How It Works
-
-### KIND Node Image Build Process
-
-The build process creates a fully functional KIND node with CRI-O:
-
-1. **Base Image**: Starts with official `kindest/node:v1.31.0` (configurable)
-2. **Install CRI-O**: Adds CRI-O packages from OpenSUSE repositories
-3. **Configure Runtime**: 
-   - Switches crictl from containerd to CRI-O
-   - Disables containerd service
-   - Enables CRI-O service
-4. **Image Migration**: Migrates pre-loaded Kubernetes images from containerd to CRI-O storage
-5. **Final Image**: Commits the configured image with proper KIND entrypoint
-
-### Files Structure
-
-```
-├── Dockerfile                   # KIND node with CRI-O installation
-├── .github/workflows/
-│   ├── build-and-push.yml      # CI/CD pipeline for building and pushing
-│   └── test.yml                # Testing and linting workflow
-├── scripts/
-│   ├── build-kind-image.sh     # Local build script (for development)
-│   └── create-kind-cluster.sh  # Script to create KIND cluster
-├── kind-crio.yaml              # KIND cluster configuration
-├── examples/
-│   ├── httpbin.yaml                    # Sample Kubernetes application
-│   └── test-image-name-blocking.yaml  # Test for K8s 1.34+ image name blocking
-└── README.md                  # This file
-```
-
-## Configuration
 
 ### KIND Cluster Configuration
 
@@ -313,13 +218,6 @@ docker exec -it <kind-node-name> journalctl -u crio
 # Check container runtime
 kubectl get nodes -o jsonpath='{.items[*].status.nodeInfo.containerRuntimeVersion}'
 ```
-
-## Supported Versions
-
-- **CRI-O**: v1.30+ (configurable via environment variable)
-- **Kubernetes**: v1.29+ (configurable via KIND node version)
-- **KIND**: Latest stable (uses kindest/node images)
-- **Container Images**: Automatically migrated from containerd to CRI-O
 
 ## Why Use CRI-O with KIND?
 
@@ -407,7 +305,7 @@ EOF
 
 ## References
 
-- [CRI-O Official Documentation](https://cri-o.io/)
+- [CRI-O GitHub Documentation](https://github.com/cri-o/cri-o/blob/main/tutorials/crio-in-kind.md/)
 - [KIND Documentation](https://kind.sigs.k8s.io/)
 - [Kubernetes Container Runtime Interface](https://kubernetes.io/docs/concepts/architecture/cri/)
 - [OpenSUSE CRI-O Packages](https://download.opensuse.org/repositories/isv:/cri-o:/)
