@@ -37,7 +37,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     runc \
     libdevmapper1.02.1 \
     libgpgme11 \
-    libassuan0 \
+    libassuan9 \
     libseccomp2 \
     libsystemd0 \
     libbtrfs0 \
