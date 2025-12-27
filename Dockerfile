@@ -1,5 +1,5 @@
 # Multi-stage build for CRI-O
-FROM golang:1.25-bullseye AS builder
+FROM golang:1.25.5-trixie AS builder
 
 # CRI-O version to build
 ARG CRIO_VERSION=v1.31.2
