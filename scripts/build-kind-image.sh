@@ -3,11 +3,12 @@
 set -euo pipefail
 
 CRIO_VERSION=${CRIO_VERSION:-v1.33}
+KUBERNETES_VERSION=${KUBERNETES_VERSION:-v1.31.0}
 TARGET="kindnode/crio:$CRIO_VERSION"
 INTERMEDIATE="${TARGET}-tmp"
 
 echo "Building intermediate image $INTERMEDIATE ..."
-docker build --build-arg CRIO_VERSION=$CRIO_VERSION -t $INTERMEDIATE .
+docker build --build-arg CRIO_VERSION=$CRIO_VERSION --build-arg KUBERNETES_VERSION=$KUBERNETES_VERSION -t $INTERMEDIATE .
 
 echo "Building final image $TARGET ..."
 

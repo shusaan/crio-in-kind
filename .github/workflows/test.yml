@@ -26,6 +26,7 @@ jobs:
         tags: kindnode/crio:v1.33-tmp
         build-args: |
           CRIO_VERSION=v1.33
+          KUBERNETES_VERSION=v1.31.0
 
     - name: Build final KIND CRI-O image (test)
       run: |

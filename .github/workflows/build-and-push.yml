@@ -11,6 +11,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
   CRIO_VERSION: v1.33
+  KUBERNETES_VERSION: v1.31.0
 
 jobs:
   build-and-push:
@@ -60,6 +61,7 @@ jobs:
         tags: kindnode/crio:${{ env.CRIO_VERSION }}-tmp
         build-args: |
           CRIO_VERSION=${{ env.CRIO_VERSION }}
+          KUBERNETES_VERSION=${{ env.KUBERNETES_VERSION }}
 
     - name: Build final KIND CRI-O image with image migration
       run: |
