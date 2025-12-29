@@ -200,7 +200,7 @@ jobs:
         git push
 
     - name: Create GitHub Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ needs.check-upstream-versions.outputs.release_tag }}
         name: "CRI-O ${{ needs.check-upstream-versions.outputs.crio_latest }} + Kubernetes ${{ needs.check-upstream-versions.outputs.k8s_latest }}"
