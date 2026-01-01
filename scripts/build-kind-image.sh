@@ -4,19 +4,21 @@ set -euo pipefail
 
 CRIO_VERSION=${CRIO_VERSION:-v1.34}
 KUBERNETES_VERSION=${KUBERNETES_VERSION:-v1.31.0}
-OS=${OS:-xUbuntu_22.04}
 TARGET="kindnode/crio:$CRIO_VERSION"
 INTERMEDIATE="${TARGET}-tmp"
 
+# Extract minor version from CRIO_VERSION (e.g., v1.34 -> 1.34)
+CRIO_VERSION_MINOR=$(echo "$CRIO_VERSION" | sed 's/^v//')
+
 echo "Building intermediate image $INTERMEDIATE ..."
 echo "Using CRI-O version: $CRIO_VERSION"
+echo "Using CRI-O minor version: $CRIO_VERSION_MINOR"
 echo "Using Kubernetes version: $KUBERNETES_VERSION"
-echo "Using OS: $OS"
 
 docker build \
     --build-arg CRIO_VERSION=$CRIO_VERSION \
+    --build-arg CRIO_VERSION_MINOR=$CRIO_VERSION_MINOR \
     --build-arg KUBERNETES_VERSION=$KUBERNETES_VERSION \
-    --build-arg OS=$OS \
     -t $INTERMEDIATE .
 
 echo "Building final image $TARGET ..."
