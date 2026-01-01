@@ -1,127 +1,102 @@
 # CRI-O in KIND
 
-Build custom KIND node images with CRI-O container runtime instead of containerd.
+Build custom KIND node images with CRI-O container runtime instead of containerd. **Automatically supports the last 3 stable Kubernetes versions with the latest CRI-O release.**
 
 ## Overview
 
-This repository provides the necessary files to create Kubernetes in Docker (KIND) clusters that use CRI-O as the container runtime instead of the default containerd. Images are automatically built and published via GitHub Actions.
+This repository provides the necessary files to create Kubernetes in Docker (KIND) clusters that use CRI-O as the container runtime instead of the default containerd. Images are automatically built and published via GitHub Actions for multiple Kubernetes versions.
 
-## Prerequisites
+## 🚀 Quick Start
 
-- KIND installed ([installation guide](https://kind.sigs.k8s.io/docs/user/quick-start/#installation))
-- Docker or Podman
-- kubectl
-
-## How to Use with KIND
-
-### Method 1: Using Pre-built Images (Recommended)
-
-The easiest way is to use our pre-built images from GitHub Container Registry:
+### Using Pre-built Images (Recommended)
 
 ```bash
-# Create KIND cluster with CRI-O image
+# Use latest Kubernetes version with latest CRI-O
 kind create cluster \
   --name my-crio-cluster \
-  --image ghcr.io/shusaan/crio-in-kind:v1.33 \
+  --image ghcr.io/shusaan/crio-in-kind:latest \
+  --config kind-crio.yaml
+
+# Or use specific Kubernetes version with latest CRI-O
+kind create cluster \
+  --name my-crio-cluster \
+  --image ghcr.io/shusaan/crio-in-kind:v1.35.0 \
   --config kind-crio.yaml
 ```
 
-### Method 2: Using Local Build
-
-If you prefer to build the image locally:
+### Verify CRI-O Runtime
 
 ```bash
-# Build the image
-./scripts/build-kind-image.sh
-
-# Create cluster with local image
-kind create cluster \
-  --name my-crio-cluster \
-  --image kindnode/crio:v1.33 \
-  --config kind-crio.yaml
+# Check container runtime
+kubectl get nodes -o jsonpath='{.items[*].status.nodeInfo.containerRuntimeVersion}'
+# Expected output: cri-o://1.34.x
 ```
 
-### Method 3: Using Helper Script
+## 📦 Available Images
 
-Use our convenience script that handles everything:
+### Current Support Matrix
+
+**CRI-O Version**: Always latest stable release  
+**Kubernetes Versions**: Last 3 stable releases (automatically updated)
+
+### Image Tags
+
+#### Primary Tags (Kubernetes Version)
+- `ghcr.io/shusaan/crio-in-kind:v1.35.0` - Latest CRI-O with Kubernetes v1.35.0
+- `ghcr.io/shusaan/crio-in-kind:v1.34.3` - Latest CRI-O with Kubernetes v1.34.3  
+- `ghcr.io/shusaan/crio-in-kind:v1.33.7` - Latest CRI-O with Kubernetes v1.33.7
+
+#### Version-Specific Tags
+- `ghcr.io/shusaan/crio-in-kind:v1.34` - Latest CRI-O version tag
+- `ghcr.io/shusaan/crio-in-kind:v1.34-k8s-v1.35.0` - Full version specification
+- `ghcr.io/shusaan/crio-in-kind:latest` - Latest CRI-O with latest Kubernetes
+
+#### Development Tags
+- `ghcr.io/shusaan/crio-in-kind:main` - Latest from main branch
+- `ghcr.io/shusaan/crio-in-kind:sha-xxxxxxx` - Specific commit builds
+
+## 🔧 Usage Examples
+
+### Method 1: Helper Script (Easiest)
 
 ```bash
 # Set cluster name (optional)
 export CLUSTER_NAME=my-crio-cluster
 
-# Create cluster
+# Create cluster with latest versions
 ./scripts/create-kind-cluster.sh
 ```
 
-### Verify CRI-O Runtime
-
-After creating the cluster, verify it's using CRI-O:
+### Method 2: Manual KIND Commands
 
 ```bash
-# Check cluster info
-kubectl cluster-info --context kind-my-crio-cluster
-
-# Verify container runtime
-kubectl get nodes -o jsonpath='{.items[*].status.nodeInfo.containerRuntimeVersion}'
-# Expected output: cri-o://1.33.x
-```
-
-### Available Image Tags
-
-Our images are available with multiple tags:
-
-- `ghcr.io/shusaan/crio-in-kind:v1.33` - Specific CRI-O version
-- `ghcr.io/shusaan/crio-in-kind:latest` - Latest stable build
-- `ghcr.io/shusaan/crio-in-kind:main` - Latest from main branch
-
-## Quick Start
-
-### Option 1: Use Pre-built Image (Recommended)
-
-```bash
-# Pull the pre-built image from GitHub Container Registry
-docker pull ghcr.io/[username]/crio-in-kind:v1.33
-
-# Create KIND cluster with pre-built image
+# Latest versions
 kind create cluster \
   --name crio-test \
-  --image ghcr.io/[username]/crio-in-kind:v1.33 \
-  --config ./kind-crio.yaml
+  --image ghcr.io/shusaan/crio-in-kind:latest \
+  --config kind-crio.yaml
+
+# Specific Kubernetes version
+kind create cluster \
+  --name crio-k8s-134 \
+  --image ghcr.io/shusaan/crio-in-kind:v1.34.3 \
+  --config kind-crio.yaml
 ```
 
-### Option 2: Build Locally
+### Method 3: Local Build
 
 ```bash
-# Set CRI-O version (default: v1.33)
-export CRIO_VERSION=v1.33
-
-# Build the KIND node image with CRI-O
+# Build locally (uses latest versions)
 ./scripts/build-kind-image.sh
-```
 
-### Create KIND Cluster
-
-```bash
-# Using the create script (works with both pre-built and local images)
-./scripts/create-kind-cluster.sh
-
-# Or manually:
+# Create cluster with local image
 kind create cluster \
-  --name crio-test \
-  --image kindnode/crio:v1.33 \
-  --config ./kind-crio.yaml
+  --name local-crio \
+  --image kindnode/crio:v1.34 \
+  --config kind-crio.yaml
 ```
 
-### Verify CRI-O Runtime
-
-```bash
-# Check cluster info
-kubectl cluster-info --context kind-crio-test
-
-# Verify container runtime
-kubectl get nodes -o jsonpath='{.items[*].status.nodeInfo.containerRuntimeVersion}'
-# Should output: cri-o://1.33.x
-```
+## 🧪 Testing & Examples
 
 ### Test with Sample Application
 
@@ -134,17 +109,22 @@ kubectl port-forward svc/httpbin 8000:8000
 
 # Test in another terminal
 curl -X GET localhost:8000/get
-
-# Test Docker image name blocking (K8s 1.34+)
-kubectl apply -f examples/test-image-name-blocking.yaml
 ```
 
-### Available Tags
+### Test Kubernetes 1.34+ Features
 
-- `ghcr.io/[username]/crio-in-kind:v1.33` - CRI-O version tag
-- `ghcr.io/[username]/crio-in-kind:latest` - Latest build from main branch
-- `ghcr.io/[username]/crio-in-kind:main` - Main branch builds
-- `ghcr.io/[username]/crio-in-kind:sha-xxxxxxx` - Specific commit builds
+```bash
+# Test Docker image name blocking (only works properly with CRI-O)
+kubectl apply -f examples/test-image-name-blocking.yaml
+
+# This should fail with CRI-O in K8s 1.34+ (short names blocked)
+kubectl run test-short --image=nginx:latest
+
+# This should work (full registry name)
+kubectl run test-full --image=docker.io/library/nginx:latest
+```
+
+## ⚙️ Configuration
 
 ### KIND Cluster Configuration
 
@@ -162,13 +142,29 @@ nodes:
       criSocket: unix:///var/run/crio/crio.sock
 ```
 
-## Development
+### Prerequisites
+
+- KIND installed ([installation guide](https://kind.sigs.k8s.io/docs/user/quick-start/#installation))
+- Docker or Podman
+- kubectl
+
+## 🔄 Automatic Updates
+
+This repository automatically:
+- **Monitors** CRI-O and Kubernetes releases weekly
+- **Builds** images for the last 3 stable Kubernetes versions
+- **Publishes** multi-architecture images (linux/amd64, linux/arm64)
+- **Creates** GitHub releases with SHA256 digests
+- **Updates** documentation with supported versions
+
+See [RELEASE_AUTOMATION.md](RELEASE_AUTOMATION.md) for details.
+
+## 🛠️ Development
 
 ### Local Development
 
 ```bash
-# Build image locally
-export CRIO_VERSION=v1.33
+# Build image locally (uses latest versions)
 ./scripts/build-kind-image.sh
 
 # Create test cluster
@@ -176,20 +172,17 @@ export CRIO_VERSION=v1.33
 
 # Test with sample app
 kubectl apply -f examples/httpbin.yaml
-
-# Test Docker image name blocking behavior (K8s 1.34+)
-kubectl apply -f examples/test-image-name-blocking.yaml
 ```
 
 ### Contributing
 
 1. Fork the repository
 2. Create your feature branch
-3. Test with different CRI-O versions
+3. Test with different versions
 4. Ensure CI/CD pipeline passes
 5. Submit a pull request
 
-## Troubleshooting
+## 🔍 Troubleshooting
 
 ### Common Issues
 
@@ -202,9 +195,7 @@ kubectl apply -f examples/test-image-name-blocking.yaml
 
 ```bash
 # Check if image exists
-docker images | grep kindnode/crio
-# or for pre-built images
-docker images | grep ghcr.io
+docker images | grep ghcr.io/shusaan/crio-in-kind
 
 # Check KIND cluster status
 kind get clusters
@@ -215,7 +206,7 @@ kubectl get nodes -o wide
 # Check CRI-O logs in KIND node
 docker exec -it <kind-node-name> journalctl -u crio
 
-# Check container runtime
+# Check container runtime version
 kubectl get nodes -o jsonpath='{.items[*].status.nodeInfo.containerRuntimeVersion}'
 ```
 
