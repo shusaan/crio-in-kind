@@ -201,6 +201,7 @@ jobs:
             --platform linux/amd64,linux/arm64 \
             --build-arg CRIO_VERSION=$CRIO_LATEST \
             --build-arg KUBERNETES_VERSION=$K8S_VERSION \
+            --build-arg OS=xUbuntu_22.04 \
             --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$K8S_VERSION \
             --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$CRIO_LATEST-k8s-$K8S_VERSION \
             --push \
@@ -215,6 +216,7 @@ jobs:
           --platform linux/amd64,linux/arm64 \
           --build-arg CRIO_VERSION=$CRIO_LATEST \
           --build-arg KUBERNETES_VERSION=$LATEST_K8S \
+          --build-arg OS=xUbuntu_22.04 \
           --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$CRIO_LATEST \
           --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
           --push \

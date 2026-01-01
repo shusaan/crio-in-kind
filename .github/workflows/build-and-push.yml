@@ -94,6 +94,7 @@ jobs:
           docker build \
             --build-arg CRIO_VERSION=$CRIO_LATEST \
             --build-arg KUBERNETES_VERSION=$K8S_VERSION \
+            --build-arg OS=xUbuntu_22.04 \
             -t kindnode/crio:$CRIO_LATEST-$K8S_VERSION-tmp \
             .
           
