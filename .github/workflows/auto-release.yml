@@ -37,14 +37,28 @@ jobs:
       run: |
         # Get current versions from Dockerfile
         CURRENT_CRIO=$(grep "ARG CRIO_VERSION" Dockerfile | head -1 | sed 's/.*=//' || echo "")
-        CURRENT_K8S=$(grep "ARG KUBERNETES_VERSION" Dockerfile | head -1 | sed 's/.*=//' || echo "v1.31.0")
+        CURRENT_K8S=$(grep "ARG KIND_VERSION" Dockerfile | head -1 | sed 's/.*=//' || echo "v1.31.0")
         
-        # Get latest CRI-O version
-        LATEST_CRIO=$(curl -s https://api.github.com/repos/cri-o/cri-o/releases/latest | jq -r '.tag_name')
+        # Get latest CRI-O version with error handling
+        CRIO_RESPONSE=$(curl -s https://api.github.com/repos/cri-o/cri-o/releases/latest)
+        if echo "$CRIO_RESPONSE" | jq -e '.tag_name' > /dev/null 2>&1; then
+          LATEST_CRIO=$(echo "$CRIO_RESPONSE" | jq -r '.tag_name')
+        else
+          echo "Error getting CRI-O version: $CRIO_RESPONSE"
+          LATEST_CRIO="v1.33.7"  # fallback version
+        fi
         
-        # Get last 3 Kubernetes versions (stable releases only)
-        K8S_VERSIONS=$(curl -s https://api.github.com/repos/kubernetes/kubernetes/releases | \
-          jq -r '[.[] | select(.prerelease == false and (.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))) | .tag_name] | .[0:3] | .[]')
+        # Get last 3 Kubernetes versions (stable releases only) with error handling
+        K8S_RESPONSE=$(curl -s https://api.github.com/repos/kubernetes/kubernetes/releases)
+        if echo "$K8S_RESPONSE" | jq -e '.[0].tag_name' > /dev/null 2>&1; then
+          K8S_VERSIONS=$(echo "$K8S_RESPONSE" | \
+            jq -r '[.[] | select(.prerelease == false and (.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))) | .tag_name] | .[0:3] | .[]')
+        else
+          echo "Error getting Kubernetes versions: $K8S_RESPONSE"
+          K8S_VERSIONS="v1.35.0
+v1.34.3
+v1.33.7"  # fallback versions
+        fi
         
         # Convert to array for easier handling
         K8S_ARRAY=()
@@ -134,7 +148,7 @@ jobs:
         echo ""
         echo "📊 Current Status:"
         echo "   CRI-O: ${{ needs.check-upstream-versions.outputs.crio_current }} (latest: ${{ needs.check-upstream-versions.outputs.crio_latest }})"
-        echo "   Kubernetes: ${{ needs.check-upstream-versions.outputs.k8s_current }} (latest: ${{ needs.check-upstream-versions.outputs.k8s_latest }})"
+        echo "   KIND: ${{ needs.check-upstream-versions.outputs.k8s_current }} (latest: ${{ needs.check-upstream-versions.outputs.k8s_latest }})"
         echo "   Supported K8s versions: ${{ needs.check-upstream-versions.outputs.k8s_versions }}"
         echo ""
         echo "✅ Repository is up to date!"
