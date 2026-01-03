@@ -43,9 +43,7 @@ jobs:
             jq -r '[.[] | select(.prerelease == false and (.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))) | .tag_name] | .[0:3] | .[]')
         else
           echo "Error getting Kubernetes versions: $K8S_RESPONSE"
-          K8S_VERSIONS="v1.35.0
-v1.34.3
-v1.33.7"  # fallback versions
+          K8S_VERSIONS=$(echo -e "v1.35.0\nv1.34.3\nv1.33.7")  # fallback versions
         fi
         
         # Convert to array for easier handling
