@@ -1,7 +1,7 @@
 ARG KIND_VERSION=v1.31.0
 FROM kindest/node:${KIND_VERSION}
 
-ARG CRIO_VERSION=v1.33.7
+ARG CRIO_VERSION=v1.31
 ARG PROJECT_PATH=prerelease:/$CRIO_VERSION
 
 # Set shell options for better error handling
