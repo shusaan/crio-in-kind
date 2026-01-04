@@ -170,8 +170,8 @@ jobs:
         K8S_LATEST="${{ needs.check-upstream-versions.outputs.k8s_latest }}"
         
         # Update Dockerfile
-        sed -i "s/ARG KUBERNETES_VERSION=.*/ARG KUBERNETES_VERSION=$K8S_LATEST/" Dockerfile
-        sed -i "s/ARG CRIO_VERSION.*/ARG CRIO_VERSION=$CRIO_LATEST/" Dockerfile
+        sed -i "s/ARG KIND_VERSION=.*/ARG KIND_VERSION=$K8S_LATEST/" Dockerfile
+        sed -i "s/ARG CRIO_VERSION=.*/ARG CRIO_VERSION=$CRIO_LATEST/" Dockerfile
         
         # Update README version references
         sed -i "s/crio-in-kind:v[0-9]\+\.[0-9]\+/crio-in-kind:$CRIO_LATEST/g" README.md
@@ -212,7 +212,7 @@ jobs:
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
             --build-arg CRIO_VERSION=$CRIO_LATEST \
-            --build-arg KUBERNETES_VERSION=$K8S_VERSION \
+            --build-arg KIND_VERSION=$K8S_VERSION \
             --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$K8S_VERSION \
             --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$CRIO_LATEST-k8s-$K8S_VERSION \
             --push \
@@ -227,7 +227,7 @@ jobs:
         docker buildx build \
           --platform linux/amd64,linux/arm64 \
           --build-arg CRIO_VERSION=$CRIO_LATEST \
-          --build-arg KUBERNETES_VERSION=$LATEST_K8S \
+          --build-arg KIND_VERSION=$LATEST_K8S \
           --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$CRIO_LATEST \
           --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
           --push \

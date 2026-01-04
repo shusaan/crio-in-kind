@@ -1,19 +1,63 @@
-name: Build and Push KIND CRI-O Image
+name: Build and Test KIND CRI-O Image
 
 on:
   push:
     branches: [ main, develop ]
     tags: [ 'v*' ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, develop ]
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  # Fast build test for PRs and feature branches
+  build-test:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v6
+
+    - name: Get versions
+      id: versions
+      run: |
+        # Get latest CRI-O version with error handling
+        CRIO_RESPONSE=$(curl -s https://api.github.com/repos/cri-o/cri-o/releases/latest)
+        if echo "$CRIO_RESPONSE" | jq -e '.tag_name' > /dev/null 2>&1; then
+          CRIO_LATEST=$(echo "$CRIO_RESPONSE" | jq -r '.tag_name')
+        else
+          echo "Error getting CRI-O version: $CRIO_RESPONSE"
+          CRIO_LATEST="v1.33.7"  # fallback version
+        fi
+        
+        echo "crio_latest=$CRIO_LATEST" >> $GITHUB_OUTPUT
+        echo "Latest CRI-O: $CRIO_LATEST"
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build test image (single arch, no push)
+      run: |
+        echo "🧪 Testing build with CRI-O ${{ steps.versions.outputs.crio_latest }}"
+        
+        # Build only for amd64 to test quickly
+        docker build \
+          --build-arg CRIO_VERSION=${{ steps.versions.outputs.crio_latest }} \
+          --build-arg KIND_VERSION=v1.31.0 \
+          --tag test-image:latest \
+          .
+        
+        echo "✅ Build test successful!"
+
+  # Full multi-version build and push for main/develop
   build-and-push:
     runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
     permissions:
       contents: read
       packages: write
@@ -67,7 +111,6 @@ jobs:
       uses: docker/setup-buildx-action@v3
 
     - name: Log in to Container Registry
-      if: github.event_name != 'pull_request'
       uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
@@ -90,7 +133,6 @@ jobs:
           type=sha
 
     - name: Build multi-version images
-      if: github.event_name != 'pull_request'
       run: |
         CRIO_LATEST="${{ steps.versions.outputs.crio_latest }}"
         K8S_VERSIONS="${{ steps.versions.outputs.k8s_versions }}"
@@ -105,7 +147,7 @@ jobs:
           # Build intermediate image first
           docker build \
             --build-arg CRIO_VERSION=$CRIO_LATEST \
-            --build-arg KUBERNETES_VERSION=$K8S_VERSION \
+            --build-arg KIND_VERSION=$K8S_VERSION \
             -t kindnode/crio:$CRIO_LATEST-$K8S_VERSION-tmp \
             .
           
@@ -148,7 +190,7 @@ jobs:
         docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
 
     - name: Run Trivy vulnerability scanner
-      if: github.event_name != 'pull_request' && github.repository_owner == github.actor
+      if: github.repository_owner == github.actor
       uses: aquasecurity/trivy-action@master
       with:
         image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.versions.outputs.crio_latest }}
@@ -156,7 +198,7 @@ jobs:
         output: 'trivy-results.sarif'
 
     - name: Upload Trivy scan results to GitHub Security tab
-      if: github.event_name != 'pull_request' && github.repository_owner == github.actor
+      if: github.repository_owner == github.actor
       uses: github/codeql-action/upload-sarif@v4
       with:
         sarif_file: 'trivy-results.sarif'
