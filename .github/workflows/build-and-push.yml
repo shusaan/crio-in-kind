@@ -147,7 +147,7 @@ jobs:
           # Build intermediate image first
           docker build \
             --build-arg CRIO_VERSION=$CRIO_LATEST \
-            --build-arg KUBERNETES_VERSION=$K8S_VERSION \
+            --build-arg KIND_VERSION=$K8S_VERSION \
             -t kindnode/crio:$CRIO_LATEST-$K8S_VERSION-tmp \
             .
           
