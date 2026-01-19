@@ -161,8 +161,17 @@ jobs:
           # Wait for daemons to start
           sleep 10
           
-          # Migrate images
-          docker exec crio-builder-$K8S_VERSION bash -c 'for IMG in $(ctr -n k8s.io images list -q | grep "registry.k8s.io/kube-"); do echo "Migrating $IMG ..." && ctr -n k8s.io image export --platform "linux/amd64" - "$IMG" | podman load; done'
+          # Migrate images with platform detection
+          PLATFORM=$(docker exec crio-builder-$K8S_VERSION uname -m)
+          if [ "$PLATFORM" = "x86_64" ]; then
+            DOCKER_PLATFORM="linux/amd64"
+          elif [ "$PLATFORM" = "aarch64" ]; then
+            DOCKER_PLATFORM="linux/arm64"
+          else
+            DOCKER_PLATFORM="linux/amd64"  # fallback
+          fi
+          
+          docker exec crio-builder-$K8S_VERSION bash -c "for IMG in \$(ctr -n k8s.io images list -q | grep \"registry.k8s.io/kube-\"); do echo \"Migrating \$IMG for $DOCKER_PLATFORM...\" && ctr -n k8s.io image export --platform \"$DOCKER_PLATFORM\" - \"\$IMG\" | podman load; done"
           
           # Commit final image
           docker commit --change 'ENTRYPOINT [ "/usr/local/bin/entrypoint", "/sbin/init" ]' crio-builder-$K8S_VERSION kindnode/crio:$CRIO_LATEST-$K8S_VERSION
