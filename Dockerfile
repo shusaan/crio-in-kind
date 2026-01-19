@@ -15,12 +15,10 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
     ca-certificates curl gnupg && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Add CRI-O repository
-# Extract major.minor version from CRIO_VERSION (e.g., v1.35.0 -> v1.35)
+# Add CRI-O repository using project-add service
 RUN CRIO_REPO_VERSION="${CRIO_VERSION%.*}" && \
-    curl -fsSL "https://download.opensuse.org/repositories/isv:/cri-o:/stable:/${CRIO_REPO_VERSION}/deb/Release.key" \
-    | gpg --dearmor -o /etc/apt/keyrings/cri-o.gpg && \
-    echo "deb [signed-by=/etc/apt/keyrings/cri-o.gpg] https://download.opensuse.org/repositories/isv:/cri-o:/stable:/${CRIO_REPO_VERSION}/deb/ /" \
+    curl -fsSL https://pkgs.k8s.io/addons:/cri-o/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/crio-archive-keyring.gpg && \
+    echo "deb [signed-by=/etc/apt/keyrings/crio-archive-keyring.gpg] https://pkgs.k8s.io/addons:/cri-o/deb/ /" \
     > /etc/apt/sources.list.d/cri-o.list
 
 # Install cri-o using force options and manual dependency resolution
