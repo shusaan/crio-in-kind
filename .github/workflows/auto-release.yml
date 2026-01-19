@@ -206,54 +206,17 @@ jobs:
         
         # Build images for each supported Kubernetes version
         for K8S_VERSION in "${VERSIONS_ARRAY[@]}"; do
-          echo "🔨 Building multi-arch image for Kubernetes $K8S_VERSION with CRI-O $CRIO_LATEST"
+          echo "🔨 Building image for Kubernetes $K8S_VERSION with CRI-O $CRIO_LATEST"
           
-          # Build for each architecture separately to handle image migration
-          for ARCH in "linux/amd64" "linux/arm64"; do
-            ARCH_TAG=$(echo $ARCH | sed 's/\//-/g')  # linux/amd64 -> linux-amd64
-            
-            echo "Building for $ARCH..."
-            
-            # Build intermediate image for this architecture
-            docker buildx build \
-              --platform $ARCH \
-              --build-arg CRIO_VERSION=$CRIO_LATEST \
-              --build-arg KIND_VERSION=$K8S_VERSION \
-              --tag kindnode/crio:$CRIO_LATEST-$K8S_VERSION-$ARCH_TAG-tmp \
-              --load \
-              .
-            
-            # Run container for image migration
-            docker run --privileged --rm -d --name crio-builder-$K8S_VERSION-$ARCH_TAG --entrypoint sleep kindnode/crio:$CRIO_LATEST-$K8S_VERSION-$ARCH_TAG-tmp infinity
-            
-            # Start daemons
-            docker exec -d crio-builder-$K8S_VERSION-$ARCH_TAG containerd
-            docker exec -d crio-builder-$K8S_VERSION-$ARCH_TAG crio
-            
-            # Wait for daemons to start
-            sleep 10
-            
-            # Migrate images with correct platform
-            PLATFORM_ARG=$ARCH
-            docker exec crio-builder-$K8S_VERSION-$ARCH_TAG bash -c "for IMG in \$(ctr -n k8s.io images list -q | grep \"registry.k8s.io/kube-\"); do echo \"Migrating \$IMG for $ARCH...\" && ctr -n k8s.io image export --platform \"$PLATFORM_ARG\" - \"\$IMG\" | podman load; done"
-            
-            # Commit final image for this architecture
-            docker commit --change 'ENTRYPOINT [ "/usr/local/bin/entrypoint", "/sbin/init" ]' crio-builder-$K8S_VERSION-$ARCH_TAG kindnode/crio:$CRIO_LATEST-$K8S_VERSION-$ARCH_TAG
-            
-            # Clean up container
-            docker kill crio-builder-$K8S_VERSION-$ARCH_TAG
-            
-            # Push architecture-specific image
-            docker tag kindnode/crio:$CRIO_LATEST-$K8S_VERSION-$ARCH_TAG ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$K8S_VERSION-$ARCH_TAG
-            docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$K8S_VERSION-$ARCH_TAG
-          done
-          
-          # Create multi-arch manifest
-          docker buildx imagetools create \
+          # Build and push image
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --build-arg CRIO_VERSION=$CRIO_LATEST \
+            --build-arg KIND_VERSION=$K8S_VERSION \
             --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$K8S_VERSION \
             --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$CRIO_LATEST-k8s-$K8S_VERSION \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$K8S_VERSION-linux-amd64 \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$K8S_VERSION-linux-arm64
+            --push \
+            .
             
           echo "✅ Built and pushed: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$K8S_VERSION"
         done
@@ -261,12 +224,14 @@ jobs:
         # Tag and push the latest CRI-O version (using latest K8s)
         LATEST_K8S="${VERSIONS_ARRAY[0]}"
         
-        # Create multi-arch manifest for latest tags
-        docker buildx imagetools create \
+        docker buildx build \
+          --platform linux/amd64,linux/arm64 \
+          --build-arg CRIO_VERSION=$CRIO_LATEST \
+          --build-arg KIND_VERSION=$LATEST_K8S \
           --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$CRIO_LATEST \
           --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
-          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$LATEST_K8S-linux-amd64 \
-          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$LATEST_K8S-linux-arm64
+          --push \
+          .
 
     - name: Generate image list with digests
       id: image_list

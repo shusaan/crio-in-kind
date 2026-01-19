@@ -35,18 +35,8 @@ docker exec -d crio-builder crio
 # Wait for daemons to start
 sleep 15
 
-# Migrate the pinned kube-* images from containerd to cri-o with platform detection
-PLATFORM=$(docker exec crio-builder uname -m)
-if [ "$PLATFORM" = "x86_64" ]; then
-  DOCKER_PLATFORM="linux/amd64"
-elif [ "$PLATFORM" = "aarch64" ]; then
-  DOCKER_PLATFORM="linux/arm64"
-else
-  DOCKER_PLATFORM="linux/amd64"  # fallback
-fi
-
-echo "Detected platform: $PLATFORM -> Docker platform: $DOCKER_PLATFORM"
-docker exec crio-builder bash -c "for IMG in \$(ctr -n k8s.io images list -q | grep \"registry.k8s.io/kube-\"); do echo \"Migrating \$IMG for $DOCKER_PLATFORM...\" && ctr -n k8s.io image export --platform \"$DOCKER_PLATFORM\" - \"\$IMG\" | podman load; done"
+# Migrate the pinned kube-* images from containerd to cri-o
+docker exec crio-builder bash -c 'for IMG in $(ctr -n k8s.io images list -q | grep "registry.k8s.io/kube-"); do echo "Migrating $IMG ..." && ctr -n k8s.io image export --platform "linux/amd64" - "$IMG" | podman load; done'
 
 # Commit the final image, restoring the original entrypoint
 docker commit --change 'ENTRYPOINT [ "/usr/local/bin/entrypoint", "/sbin/init" ]' crio-builder $TARGET
