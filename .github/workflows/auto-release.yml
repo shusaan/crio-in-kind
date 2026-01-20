@@ -276,9 +276,8 @@ jobs:
           
           # Pull and test the image
           docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$K8S_VERSION
-          
-          # Basic smoke test
-          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$K8S_VERSION crio version
+          # Basic smoke test - Requires --privileged for kind-node entrypoint          
+          docker run --rm --privileged ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$K8S_VERSION crio version
           
           echo "✅ Image $K8S_VERSION passed smoke test"
         done
